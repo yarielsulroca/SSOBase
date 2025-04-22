@@ -2,77 +2,98 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\LoginRequest;
+use App\Http\Resources\UserResource;
+use App\Models\LdapUser;
+use App\Services\LdapService;
+use Exception;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use LdapRecord\Container;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class LdapAuthController extends Controller
 {
-    public function login(Request $request)
+    private LdapService $ldapService;
+
+    public function __construct(LdapService $ldapService)
     {
-        $credentials = $request->validate([
-            'username' => ['required', 'string'],
-            'password' => ['required', 'string'],
-        ]);
+        $this->ldapService = $ldapService;
+    }
 
+    public function login(LoginRequest $request): JsonResponse
+    {
         try {
-            $connection = Container::getConnection('default');
-            
-            // Search for user
-            $user = $connection->query()
-                ->where('samaccountname', '=', $credentials['username'])
-                ->first();
-            
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not found',
-                    'redirect' => route('login')
-                ], 404);
-            }
-            
-            // Attempt to authenticate user
-            if ($connection->auth()->attempt($user->getDn(), $credentials['password'])) {
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'User authenticated successfully',
-                    'user' => [
-                        'username' => $user->getFirstAttribute('samaccountname'),
-                        'name' => $user->getFirstAttribute('cn'),
-                        'email' => $user->getFirstAttribute('mail'),
-                    ]
-                ]);
+            $credentials = $request->validated();
+            $userInfo = $this->ldapService->authenticate(
+                $credentials['username'],
+                $credentials['password']
+            );
+
+            if ($userInfo) {
+                // Generar token
+                $token = bin2hex(random_bytes(32));
+                $userInfo->setAttribute('api_token', $token);
+                $userInfo->save();
+                return $this->successResponse(['token' => $token, 'user' => $userInfo]);
             }
 
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid credentials',
-                'redirect' => route('login')
-            ], 401);
+            return $this->errorResponse(
+                'Invalid credentials',
+                'Authentication failed for all available domains',
+                401
+            );
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Authentication error: ' . $e->getMessage(),
-                'redirect' => route('login')
-            ], 500);
+        } catch (Exception $e) {
+            Log::error('LDAP Authentication Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return $this->errorResponse(
+                'Authentication error',
+                $e->getMessage(),
+                500
+            );
         }
     }
 
-    public function check()
+    private function successResponse($userInfo): JsonResponse
     {
-        if (Auth::check()) {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User authenticated successfully',
+            'user' => $userInfo
+        ]);
+    }
+
+    private function errorResponse(string $message, string $details, int $status): JsonResponse
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => $message,
+            'details' => $details
+        ], $status);
+    }
+
+    public function check(Request $request): JsonResponse
+    {
+        $token = $request->header('Authorization');
+        if (!$token) {
             return response()->json([
-                'status' => 'success',
-                'authenticated' => true,
-                'user' => Auth::user()
+                'status' => 'error',
+                'authenticated' => false,
+                'user' => null
             ]);
         }
 
+        $token = str_replace('Bearer ', '', $token);
+        $user = LdapUser::findByToken($token);
+
         return response()->json([
-            'status' => 'error',
-            'authenticated' => false,
-            'redirect' => route('login')
+            'status' => $user ? 'success' : 'error',
+            'authenticated' => (bool) $user,
+            'user' => $user
         ]);
     }
 }

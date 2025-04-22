@@ -11,42 +11,121 @@
 
 Laravel is a web application framework with expressive, elegant syntax.
 
-## LDAP Authentication Setup
+## BaseSSO - Sistema de Autenticación LDAP
 
-This application includes Windows Active Directory (LDAP) authentication. Follow these steps to set it up:
+## Descripción
+BaseSSO es un sistema de autenticación basado en Laravel que proporciona integración con Windows Active Directory (LDAP) a través de una API RESTful. El sistema permite la autenticación de usuarios y la verificación del estado de autenticación mediante tokens.
 
-1. Install the required package:
-```bash
-composer require adldap2/adldap2-laravel
-```
+## Estructura del Proyecto
 
-2. Copy `.env.example` to `.env` and configure your LDAP settings:
+### Componentes Principales
+
+1. **LdapAuthController**
+   - Maneja las solicitudes de autenticación
+   - Implementa los endpoints de la API
+   - Gestiona la respuesta de éxito/error
+
+2. **LdapService**
+   - Encapsula la lógica de conexión LDAP
+   - Maneja la autenticación contra el servidor LDAP
+   - Recupera información del usuario
+
+3. **LdapUser**
+   - Modelo que representa un usuario LDAP
+   - Implementa la interfaz Authenticatable
+   - Gestiona el almacenamiento de tokens en caché
+
+### Flujo de Autenticación
+1. El usuario envía credenciales (username/password)
+2. El sistema valida las credenciales contra el servidor LDAP
+3. Si es exitoso, genera un token de API
+4. El token se almacena en caché para futuras validaciones
+
+## Configuración
+
+1. Configure su archivo `.env` con los datos de conexión LDAP:
 ```env
-LDAP_CONNECTION=default
-LDAP_HOST=your_domain_controller.local
+LDAP_HOST=10.128.225.9
 LDAP_PORT=389
+LDAP_USERNAME=usuario@dominio.com
+LDAP_PASSWORD=contraseña
+LDAP_BASE_DN="DC=dominio,DC=com"
 LDAP_SSL=false
 LDAP_TLS=false
-LDAP_USERNAME="domain\\admin"
-LDAP_PASSWORD=your_password
-LDAP_BASE_DN="DC=your,DC=domain,DC=local"
 ```
 
-3. The API provides two endpoints:
-   - POST `/api/login` - Authenticate user with username and password
-   - GET `/api/check` - Check if user is authenticated
+## API Endpoints
 
-### API Usage
+### 1. Login
+```http
+POST /api/v1/login
+Content-Type: application/json
 
-```bash
-# Login
-curl -X POST http://your-app/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"user","password":"pass"}'
+{
+    "username": "usuario",
+    "password": "contraseña"
+}
+```
 
-# Check authentication status
-curl http://your-app/api/check
-``` We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Respuesta exitosa:
+```json
+{
+    "status": "success",
+    "message": "User authenticated successfully",
+    "user": {
+        "token": "api_token_hash",
+        "user": {
+            "username": "usuario",
+            "email": "usuario@dominio.com",
+            "domain": "dominio.com"
+        }
+    }
+}
+```
+
+### 2. Verificar Autenticación
+```http
+GET /api/v1/check
+Authorization: Bearer api_token_hash
+```
+
+Respuesta exitosa:
+```json
+{
+    "status": "success",
+    "authenticated": true,
+    "user": {
+        "username": "usuario",
+        "email": "usuario@dominio.com",
+        "domain": "dominio.com"
+    }
+}
+```
+
+## Características
+
+- Autenticación contra Active Directory
+- Generación y validación de tokens de API
+- Almacenamiento en caché de sesiones
+- Manejo de múltiples formatos de usuario (UPN, NetBIOS, DN)
+- Respuestas JSON estandarizadas
+- Validación de solicitudes mediante Form Requests
+- Transformación de datos mediante Resources
+
+## Seguridad
+
+- Tokens de API únicos por sesión
+- Almacenamiento seguro en caché
+- Validación de credenciales LDAP
+- Headers de seguridad estándar
+- Protección CSRF para rutas web
+
+## Requisitos
+
+- PHP 8.2+
+- Laravel 12.0
+- Extensión PHP LDAP
+- Servidor LDAP/Active Directory accesible We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
 - [Simple, fast routing engine](https://laravel.com/docs/routing).
 - [Powerful dependency injection container](https://laravel.com/docs/container).

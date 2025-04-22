@@ -1,0 +1,13 @@
+/vendor/
+/node_modules/
+.git
+.env
+.env.example
+.gitignore
+.gitattributes
+README.md
+*.log
+*.cache
+.docker/
+docker-compose*
+Dockerfile*

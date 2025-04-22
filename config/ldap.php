@@ -4,17 +4,18 @@ return [
     'default' => env('LDAP_CONNECTION', 'default'),
     'connections' => [
         'default' => [
-            'hosts' => [env('LDAP_HOST', '127.0.0.1')],
+            'hosts' => [env('LDAP_HOST', '10.128.225.9')],
             'port' => env('LDAP_PORT', 389),
-            'base_dn' => env('LDAP_BASE_DN', 'dc=local,dc=com'),
-            'username' => env('LDAP_USERNAME'),
+            'base_dn' => env('LDAP_BASE_DN', 'DC=tuteurgroup,DC=com'),
+            'username' => env('LDAP_USERNAME', 'testsso@tuteurgroup.com'),
             'password' => env('LDAP_PASSWORD'),
             'use_ssl' => env('LDAP_SSL', false),
             'use_tls' => env('LDAP_TLS', false),
             'timeout' => 5,
             'options' => [
-                LDAP_OPT_X_TLS_REQUIRE_CERT => LDAP_OPT_X_TLS_NEVER,
+                LDAP_OPT_PROTOCOL_VERSION => 3,
                 LDAP_OPT_REFERRALS => 0,
+                LDAP_OPT_NETWORK_TIMEOUT => 5,
             ],
         ],
     ],

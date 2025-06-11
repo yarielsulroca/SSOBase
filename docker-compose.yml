@@ -20,10 +20,12 @@ services:
     container_name: sso-nginx
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./:/var/www/html
       - ./docker/nginx:/etc/nginx/conf.d
+      - ./docker/nginx/ssl:/etc/nginx/ssl
     networks:
       - sso-network
 

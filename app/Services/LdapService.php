@@ -2,143 +2,88 @@
 
 namespace App\Services;
 
-use App\Models\LdapUser;
-use Exception;
+use LdapRecord\Container;
+use LdapRecord\Connection;
+use LdapRecord\Models\ActiveDirectory\User;
 use Illuminate\Support\Facades\Log;
 
 class LdapService
 {
-    private array $config;
-    private array $domains = ['tuteurgroup.com', 'tuteurgroup.com.ar'];
-    private array $tokens = [];
+    protected $connection;
+    protected $allowedDomains = ['tuteurgroup.com', 'RWTUTEUR.com'];
 
     public function __construct()
     {
-        $this->config = [
-            'hosts' => ['10.128.225.9'],
-            'port' => 389,
-            'base_dn' => 'DC=tuteurgroup,DC=com',
-            'timeout' => 5,
-            'use_ssl' => false,
-            'use_tls' => false,
-            'options' => [
-                LDAP_OPT_PROTOCOL_VERSION => 3,
-                LDAP_OPT_REFERRALS => 0,
-                LDAP_OPT_NETWORK_TIMEOUT => 5,
-            ]
-        ];
+        $this->connection = new Connection([
+            'hosts'    => [config('ldap.connections.default.hosts.0')],
+            'port'     => config('ldap.connections.default.port'),
+            'base_dn'  => config('ldap.connections.default.base_dn'),
+            'use_ssl'  => config('ldap.connections.default.use_ssl'),
+            'use_tls'  => config('ldap.connections.default.use_tls'),
+            'version'  => config('ldap.connections.default.version'),
+            'timeout'  => config('ldap.connections.default.timeout'),
+        ]);
+
+        Container::addConnection($this->connection, 'default');
     }
 
-    public function authenticate(string $username, string $password): ?LdapUser
+    public function authenticate(string $username, string $password): ?array
     {
-        putenv('LDAPTLS_REQCERT=never');
+        try {
+            Log::info('Attempting authentication', ['username' => $username]);
 
-        foreach ($this->domains as $domain) {
-            try {
-                $userDn = $username . '@' . $domain;
-                Log::info('Attempting authentication', ['username' => $userDn, 'domain' => $domain]);
+            // Extraer el dominio del nombre de usuario
+            $domain = $this->extractDomain($username);
+            Log::info('Extracted domain', ['domain' => $domain]);
 
-                // Intentar conexión
-                $ldap = ldap_connect($this->config['hosts'][0]);
-                if (!$ldap) {
-                    throw new Exception("No se pudo crear la conexión LDAP");
-                }
-
-                // Configurar opciones LDAP
-                foreach ($this->config['options'] as $option => $value) {
-                    ldap_set_option($ldap, $option, $value);
-                }
-
-                // Intentar bind con las credenciales del usuario
-                $bind = @ldap_bind($ldap, $userDn, $password);
-                if ($bind) {
-                    Log::info('User authenticated successfully', ['domain' => $domain]);
-                    
-                    // Buscar información adicional del usuario
-                    $search = @ldap_search($ldap, $this->config['base_dn'], "(userPrincipalName={$userDn})");
-                    if ($search) {
-                        $entries = ldap_get_entries($ldap, $search);
-                        if ($entries['count'] > 0) {
-                            $userInfo = $entries[0];
-                            return new LdapUser([
-                                'username' => $username,
-                                'email' => $userDn,
-                                'domain' => $domain,
-                                'name' => $userInfo['cn'][0] ?? null,
-                                'displayName' => $userInfo['displayname'][0] ?? null
-                            ]);
-                        }
-                    }
-                    
-                    return new LdapUser([
-                        'username' => $username,
-                        'email' => $userDn,
-                        'domain' => $domain
-                    ]);
-                }
-
-                Log::warning('Bind failed', ['error' => ldap_error($ldap)]);
-            } catch (Exception $e) {
-                Log::warning('Authentication failed for domain', [
-                    'domain' => $domain,
-                    'error' => $e->getMessage()
-                ]);
+            if (!$this->isDomainAllowed($domain)) {
+                Log::warning('Domain not allowed', ['domain' => $domain]);
+                return null;
             }
-        }
 
-        return null;
+            // Intentar autenticar con el usuario
+            $this->connection->connect();
+            $this->connection->auth()->attempt($username, $password);
+
+            // Si llegamos aquí, la autenticación fue exitosa
+            // Extraer el nombre de usuario sin el dominio
+            $usernameWithoutDomain = explode('@', $username)[0];
+
+            // Crear un objeto de usuario con información mínima
+            $userData = [
+                'username' => $usernameWithoutDomain,
+                'email' => $username,
+                'name' => $usernameWithoutDomain,
+                'displayName' => $usernameWithoutDomain,
+                'groups' => []
+            ];
+
+            Log::info('User authenticated successfully', [
+                'username' => $userData['username'],
+                'domain' => $domain
+            ]);
+
+            return $userData;
+
+        } catch (\Exception $e) {
+            Log::error('LDAP authentication error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return null;
+        }
     }
 
-    private function connect()
+    protected function extractDomain(string $username): string
     {
-        $ldap = ldap_connect($this->config['hosts'][0], $this->config['port']);
-        if (!$ldap) {
-            throw new Exception("Could not create LDAP connection");
+        if (strpos($username, '@') !== false) {
+            return explode('@', $username)[1];
         }
-
-        foreach ($this->config['options'] as $option => $value) {
-            ldap_set_option($ldap, $option, $value);
-        }
-
-        // Intentar bind inicial
-        $bind = @ldap_bind($ldap);
-        if (!$bind) {
-            throw new Exception("Initial bind failed: " . ldap_error($ldap));
-        }
-
-        return $ldap;
+        return '';
     }
 
-    private function bindUser($ldap, string $userDn, string $password): bool
+    protected function isDomainAllowed(string $domain): bool
     {
-        $bind = @ldap_bind($ldap, $userDn, $password);
-        if (!$bind) {
-            Log::warning('Bind failed', ['error' => ldap_error($ldap)]);
-            return false;
-        }
-        return true;
-    }
-
-    private function getUserInfo($ldap, string $userDn): array
-    {
-        $username = explode('@', $userDn)[0];
-        $userInfo = [
-            'username' => $username,
-            'email' => $userDn,
-            'name' => null,
-            'displayName' => null
-        ];
-
-        $search = @ldap_search($ldap, $this->config['base_dn'], "(userPrincipalName={$userDn})");
-        if ($search) {
-            $entries = ldap_get_entries($ldap, $search);
-            if ($entries['count'] > 0) {
-                $entry = $entries[0];
-                $userInfo['name'] = $entry['cn'][0] ?? null;
-                $userInfo['displayName'] = $entry['displayname'][0] ?? null;
-            }
-        }
-
-        return $userInfo;
+        return in_array(strtolower($domain), array_map('strtolower', $this->allowedDomains));
     }
 }

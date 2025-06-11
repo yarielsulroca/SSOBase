@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="60" viewBox="0 0 200 60" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <style>
+        .text { font-family: Arial, sans-serif; font-size: 32px; font-weight: bold; }
+        .primary { fill: #F53003; }
+        .secondary { fill: #1b1b18; }
+    </style>
+    <text x="10" y="40" class="text primary">TUTEUR</text>
+    <text x="120" y="40" class="text secondary">SSO</text>
+</svg>

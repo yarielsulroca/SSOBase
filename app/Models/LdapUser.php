@@ -6,10 +6,11 @@ use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use JsonSerializable;
+use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class LdapUser implements AuthenticatableContract, JsonSerializable
+class LdapUser implements AuthenticatableContract, JsonSerializable, JWTSubject
 {
-    private const CACHE_KEY = 'ldap_users';
+    public const CACHE_KEY = 'ldap_users';
 
     protected $fillable = [
         'username',
@@ -17,7 +18,35 @@ class LdapUser implements AuthenticatableContract, JsonSerializable
         'domain',
         'name',
         'displayName',
-        'api_token'
+        'givenName',
+        'surname',
+        'department',
+        'title',
+        'company',
+        'manager',
+        'memberOf',
+        'employeeID',
+        'employeeNumber',
+        'employeeType',
+        'division',
+        'office',
+        'telephoneNumber',
+        'mobile',
+        'pager',
+        'street',
+        'city',
+        'state',
+        'postalCode',
+        'country',
+        'description',
+        'whenCreated',
+        'whenChanged',
+        'lastLogon',
+        'accountExpires',
+        'userAccountControl',
+        'groups',
+        'api_token',
+        'token_expires_at'
     ];
 
     protected $attributes = [];
@@ -97,6 +126,44 @@ class LdapUser implements AuthenticatableContract, JsonSerializable
     public static function findByToken(string $token): ?self
     {
         $storage = Cache::get(self::CACHE_KEY, ['tokens' => [], 'users' => []]);
-        return $storage['tokens'][$token] ?? null;
+        $user = $storage['tokens'][$token] ?? null;
+
+        if ($user && isset($user->token_expires_at) && $user->token_expires_at < time()) {
+            // Token expirado, eliminarlo
+            unset($storage['tokens'][$token]);
+            Cache::put(self::CACHE_KEY, $storage);
+            return null;
+        }
+
+        return $user;
+    }
+
+    public function isTokenExpired(): bool
+    {
+        return isset($this->token_expires_at) && $this->token_expires_at < time();
+    }
+
+    /**
+     * Get the identifier that will be stored in the subject claim of the JWT.
+     *
+     * @return mixed
+     */
+    public function getJWTIdentifier()
+    {
+        return $this->username;
+    }
+
+    /**
+     * Return a key value array, containing any custom claims to be added to the JWT.
+     *
+     * @return array
+     */
+    public function getJWTCustomClaims()
+    {
+        return [
+            'email' => $this->email,
+            'name' => $this->name,
+            'displayName' => $this->displayName
+        ];
     }
 }

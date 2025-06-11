@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Login API</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h2>Test Login API</h2>
+    <button onclick="testLogin()">Probar Login</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testLogin() {
+            try {
+                const response = await axios.post('https://basesso.test/api/v1/login', {
+                    username: 'yasulroca@tuteurgroup.com',
+                    password: 'Soloyo.00'
+                }, {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                document.getElementById('result').textContent = JSON.stringify(response.data, null, 2);
+            } catch (error) {
+                document.getElementById('result').textContent = JSON.stringify({
+                    error: error.message,
+                    response: error.response ? error.response.data : null
+                }, null, 2);
+            }
+        }
+    </script>
+</body>
+</html> 

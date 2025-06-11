@@ -17,4 +17,12 @@ require __DIR__.'/../vendor/autoload.php';
 /** @var Application $app */
 $app = require_once __DIR__.'/../bootstrap/app.php';
 
+// Si la petición no es a una ruta de la API, devolver JSON
+if (!str_starts_with($_SERVER['REQUEST_URI'], '/api')) {
+    header('Content-Type: application/json');
+    http_response_code(404);
+    echo json_encode(['message' => 'Solo disponible como API']);
+    exit;
+}
+
 $app->handleRequest(Request::capture());
